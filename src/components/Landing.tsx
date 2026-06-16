@@ -6,32 +6,51 @@ import { TeardownInput } from "./TeardownInput";
 import { LiveProof } from "./LiveProof";
 import { TeardownView } from "./TeardownView";
 import { ShareBar } from "./ShareBar";
-import { SAMPLE_LINEAR } from "@/lib/sample";
+import { runTeardown } from "@/lib/run";
 import type { Teardown } from "@/lib/types";
 
-type Status = "idle" | "running" | "done" | "preview";
+type Status = "idle" | "running" | "done" | "error";
 
 export function Landing() {
   const [status, setStatus] = useState<Status>("idle");
   const [target, setTarget] = useState("");
+  const [statusLabel, setStatusLabel] = useState("Gathering evidence…");
   const [teardown, setTeardown] = useState<Teardown | null>(null);
+  const [errorMsg, setErrorMsg] = useState("");
   const resultsRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const scrollToResults = () =>
+    requestAnimationFrame(() =>
+      resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    );
 
   const onRun = (t: string) => {
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+
     setTarget(t);
+    setTeardown(null);
+    setErrorMsg("");
+    setStatusLabel("Finding the official site…");
     setStatus("running");
-    // NOTE: live agent API wired in the next build step. The preview ships the
-    // real, source-backed Linear teardown; other targets show an honest state.
-    window.setTimeout(() => {
-      if (t.trim().toLowerCase() === "linear") {
-        setTeardown(SAMPLE_LINEAR);
+    scrollToResults();
+
+    runTeardown(t, {
+      signal: ac.signal,
+      onStatus: (label) => setStatusLabel(label),
+      onDone: (td) => {
+        setTeardown(td);
         setStatus("done");
-      } else {
-        setTeardown(null);
-        setStatus("preview");
-      }
-      resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 650);
+        scrollToResults();
+      },
+      onError: (message) => {
+        setErrorMsg(message);
+        setStatus("error");
+        scrollToResults();
+      },
+    });
   };
 
   return (
@@ -68,7 +87,7 @@ export function Landing() {
             </div>
 
             <p className="t-small text-ink-faint mt-5">
-              No login · ~40 seconds · anything it can&apos;t source goes to{" "}
+              No login · anything it can&apos;t source goes to{" "}
               <span className="text-ink-muted">“Couldn&apos;t verify.”</span>
             </p>
           </div>
@@ -81,6 +100,14 @@ export function Landing() {
 
       {/* ---- Results ---- */}
       <div ref={resultsRef} className="scroll-mt-8">
+        {status === "running" && (
+          <section className="border-t border-rule bg-paper-2/40">
+            <div className="mx-auto w-full max-w-[46rem] px-6 py-20">
+              <Gathering target={target} label={statusLabel} />
+            </div>
+          </section>
+        )}
+
         {status === "done" && teardown && (
           <section className="border-t border-rule bg-paper-2/40">
             <div className="mx-auto w-full max-w-[46rem] px-6 py-16 sm:py-24">
@@ -92,29 +119,58 @@ export function Landing() {
           </section>
         )}
 
-        {status === "preview" && (
+        {status === "error" && (
           <section className="border-t border-rule bg-paper-2/40">
-            <div className="mx-auto w-full max-w-[46rem] px-6 py-20 text-center">
-              <Eyebrow className="justify-center">Design preview</Eyebrow>
-              <h2 className="t-h2 mt-4 text-ink">
-                The live agent comes online with the deployed build.
-              </h2>
+            <div className="mx-auto w-full max-w-[44rem] px-6 py-20 text-center">
+              <Eyebrow className="justify-center">No source, no claim</Eyebrow>
+              <h2 className="t-h2 mt-4 text-ink">Couldn&apos;t back it up.</h2>
               <p className="t-body text-ink-muted mt-4 max-w-[48ch] mx-auto">
-                You searched{" "}
-                <span className="text-ink font-medium">“{target}”</span>. In this
-                preview the source-fetching agent isn&apos;t wired yet — run{" "}
-                <button
-                  onClick={() => onRun("Linear")}
-                  className="text-amber-ink underline underline-offset-2 hover:no-underline"
-                >
-                  Linear
-                </button>{" "}
-                to see a full, real, source-backed teardown.
+                {errorMsg}
               </p>
+              <button
+                onClick={() => onRun("Linear")}
+                className="mt-6 t-small text-amber-ink underline underline-offset-2 hover:no-underline"
+              >
+                Try a sample teardown of Linear →
+              </button>
             </div>
           </section>
         )}
       </div>
     </>
+  );
+}
+
+/** Live "evidence engine" — surfaces the agent's real tool calls as it works. */
+function Gathering({ target, label }: { target: string; label: string }) {
+  return (
+    <div className="mx-auto max-w-[34rem]">
+      <Eyebrow>Gathering evidence · {target}</Eyebrow>
+      <div className="mt-6 rounded-[14px] border border-border bg-paper p-6 shadow-[var(--shadow-card)]">
+        <div className="flex items-center gap-3">
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="absolute inline-flex h-full w-full rounded-full bg-amber/60 animate-ping" />
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber" />
+          </span>
+          <span className="t-body text-ink">{label}</span>
+        </div>
+        <div className="mt-5 space-y-2.5">
+          <Bar w="92%" />
+          <Bar w="76%" />
+          <Bar w="84%" />
+        </div>
+        <p className="t-micro text-ink-faint mt-5">
+          READING REAL PAGES · ATTACHING A SOURCE TO EVERY CLAIM
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Bar({ w }: { w: string }) {
+  return (
+    <div className="h-2 rounded-full bg-paper-sunk overflow-hidden" style={{ width: w }}>
+      <div className="h-full w-1/3 bg-border-strong/40 animate-pulse" />
+    </div>
   );
 }
