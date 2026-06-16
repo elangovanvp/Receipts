@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Teardown, Claim, StreamEvent } from "@/lib/types";
-import { SAMPLE_LINEAR } from "@/lib/sample";
+import { SAMPLES } from "@/lib/sample";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -147,15 +147,16 @@ export async function POST(req: Request) {
         // Offline fallback: ships the real, source-backed Linear sample so the
         // product is demoable without a key. Any other target needs the agent.
         if (!apiKey) {
-          if (clean.toLowerCase() === "linear") {
+          const sample = SAMPLES[clean.toLowerCase()];
+          if (sample) {
             send(controller, { type: "status", tool: "web_search", label: "Finding the official site…" });
             send(controller, { type: "status", tool: "fetch_url", label: "Reading pricing & changelog…" });
-            send(controller, { type: "done", teardown: SAMPLE_LINEAR });
+            send(controller, { type: "done", teardown: sample });
           } else {
             send(controller, {
               type: "error",
               message:
-                "The live agent isn't connected here (no ANTHROPIC_API_KEY). Try “Linear” for the bundled sample, or deploy with a key.",
+                "The live agent isn't connected here (no ANTHROPIC_API_KEY). Try “Linear” or “Notion” for a bundled sample, or deploy with a key.",
             });
           }
           controller.close();
