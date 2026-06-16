@@ -40,7 +40,7 @@ Generate ≥ 20–30 real sessions first (share the link on LinkedIn). **Watch t
 Repo is a standard Next.js app → Vercel:
 1. Push to GitHub.
 2. Import the repo at vercel.com (framework auto-detected).
-3. Set env var **`ANTHROPIC_API_KEY`** (Production). Without it, only the bundled Linear sample works.
+3. Set env var **`GROQ_API_KEY`** (Production) — free, no card, from https://console.groq.com/keys. Search/fetch (Jina) is free + keyless. Without a key, only the bundled Linear/Notion samples work. (To use Gemini's free tier instead, set `LLM_BASE_URL` / `LLM_MODEL` / `LLM_API_KEY` per `.env.local`.)
 4. Deploy → public URL, no login wall on `/`. Confirm a cold visitor can run a teardown.
 
 > Permalinks (a `/t/{id}` share route backed by Vercel KV/Postgres) are an optional virality add-on — the goal event already fires on share/copy/export without it.
