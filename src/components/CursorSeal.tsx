@@ -14,7 +14,7 @@ import {
  * orients toward the pointer with parallax receipt cards, and drifts gently
  * when idle. CSS-3D only (GPU transforms). Static under reduced motion.
  */
-export function CursorSeal() {
+export function CursorSeal({ cards = true }: { cards?: boolean }) {
   const reduce = useReducedMotion();
   const wrap = useRef<HTMLDivElement>(null);
 
@@ -39,42 +39,69 @@ export function CursorSeal() {
     const target = { x: 0, y: 0 };
     const cur = { x: 0, y: 0 };
     let active = false;
+    let onscreen = true;
     let lastMove = 0;
     let raf = 0;
+    let running = false;
+
+    const apply = () => {
+      rotY.set(cur.x * 18);
+      rotX.set(-cur.y * 18);
+      pX.set(cur.x);
+      pY.set(cur.y);
+    };
+
+    // Cursor-reactive while you're near; eases to rest and STOPS when idle —
+    // no perpetual frame loop (calmer, battery-friendly, render-stable).
+    const loop = () => {
+      const now = performance.now();
+      if (active && now - lastMove > 1400) active = false;
+      const tx = active ? target.x : 0;
+      const ty = active ? target.y : 0;
+      cur.x += (tx - cur.x) * 0.09;
+      cur.y += (ty - cur.y) * 0.09;
+      apply();
+      if (!active && Math.abs(cur.x) < 0.002 && Math.abs(cur.y) < 0.002) {
+        cur.x = 0;
+        cur.y = 0;
+        apply();
+        running = false;
+        return; // settled — stop scheduling frames
+      }
+      raf = requestAnimationFrame(loop);
+    };
+
+    const start = () => {
+      if (running || !onscreen) return;
+      running = true;
+      raf = requestAnimationFrame(loop);
+    };
 
     const onMove = (e: PointerEvent) => {
       const r = el.getBoundingClientRect();
       const cx = r.left + r.width / 2;
       const cy = r.top + r.height / 2;
-      target.x = Math.max(-1, Math.min(1, (e.clientX - cx) / (r.width * 0.9)));
-      target.y = Math.max(-1, Math.min(1, (e.clientY - cy) / (r.height * 0.9)));
+      target.x = Math.max(-1, Math.min(1, (e.clientX - cx) / (r.width * 1.25)));
+      target.y = Math.max(-1, Math.min(1, (e.clientY - cy) / (r.height * 1.25)));
       active = true;
       lastMove = performance.now();
+      start();
     };
 
-    const loop = () => {
-      const now = performance.now();
-      if (active && now - lastMove > 1600) active = false;
-      let tx = target.x;
-      let ty = target.y;
-      if (!active) {
-        const t = now / 1000;
-        tx = Math.sin(t / 3) * 0.4;
-        ty = Math.sin(t / 2.3) * 0.22;
-      }
-      cur.x += (tx - cur.x) * 0.08;
-      cur.y += (ty - cur.y) * 0.08;
-      rotY.set(cur.x * 16);
-      rotX.set(-cur.y * 16);
-      pX.set(cur.x);
-      pY.set(cur.y);
-      raf = requestAnimationFrame(loop);
-    };
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        onscreen = entry.isIntersecting;
+        if (!onscreen) active = false;
+        else start();
+      },
+      { threshold: 0 },
+    );
+    io.observe(el);
 
     window.addEventListener("pointermove", onMove, { passive: true });
-    raf = requestAnimationFrame(loop);
     return () => {
       window.removeEventListener("pointermove", onMove);
+      io.disconnect();
       cancelAnimationFrame(raf);
     };
   }, [reduce, rotX, rotY, pX, pY]);
@@ -88,6 +115,9 @@ export function CursorSeal() {
     >
       <motion.div
         className="relative h-full w-full"
+        initial={reduce ? false : { opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.55, ease: [0.34, 1.56, 0.64, 1] }}
         style={{
           rotateX: reduce ? 0 : rotX,
           rotateY: reduce ? 0 : rotY,
@@ -105,10 +135,14 @@ export function CursorSeal() {
           <SealSVG />
         </div>
 
-        {/* parallax receipt cards floating above the seal */}
-        <FloatCard className="left-[-6%] top-[10%]" z={44} x={c1x} y={c1y} label="linear.app" tone="amber" />
-        <FloatCard className="right-[-9%] top-[36%]" z={66} x={c2x} y={c2y} label="pricing" tone="ink" />
-        <FloatCard className="left-[2%] bottom-[6%]" z={30} x={c3x} y={c3y} label="changelog" tone="ink" />
+        {/* parallax receipt cards floating above the seal (standalone use only) */}
+        {cards && (
+          <>
+            <FloatCard className="left-[-6%] top-[10%]" z={44} x={c1x} y={c1y} label="linear.app" tone="amber" />
+            <FloatCard className="right-[-9%] top-[36%]" z={66} x={c2x} y={c2y} label="pricing" tone="ink" />
+            <FloatCard className="left-[2%] bottom-[6%]" z={30} x={c3x} y={c3y} label="changelog" tone="ink" />
+          </>
+        )}
       </motion.div>
     </div>
   );

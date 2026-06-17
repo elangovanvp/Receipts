@@ -1,6 +1,12 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { useRef } from "react";
+import {
+  motion,
+  useMotionValue,
+  useSpring,
+  useReducedMotion,
+} from "framer-motion";
 import { CursorSeal } from "./CursorSeal";
 import { SourceChip } from "./SourceChip";
 import { reveal, revealStagger, couldntVerify } from "@/lib/motion";
@@ -27,23 +33,53 @@ const PROOF_CLAIMS: Claim[] = [
   },
 ];
 
+const SPRING = { stiffness: 150, damping: 17, mass: 0.4 };
+
 export function LiveProof() {
   const reduce = useReducedMotion();
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Cursor-driven 3D tilt — the card orients toward the pointer, springs back
+  // to flat on leave (no perpetual loop; render-stable at rest).
+  const rx = useMotionValue(0);
+  const ry = useMotionValue(0);
+  const srx = useSpring(rx, SPRING);
+  const sry = useSpring(ry, SPRING);
+
+  const onMove = (e: React.PointerEvent) => {
+    if (reduce || !ref.current) return;
+    const r = ref.current.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width - 0.5;
+    const py = (e.clientY - r.top) / r.height - 0.5;
+    ry.set(px * 9);
+    rx.set(-py * 9);
+  };
+  const onLeave = () => {
+    rx.set(0);
+    ry.set(0);
+  };
 
   return (
-    <div className="relative">
-      {/* The dossier card — the product, proven */}
+    <div
+      className="relative"
+      style={{ perspective: 1100 }}
+      onPointerMove={onMove}
+      onPointerLeave={onLeave}
+    >
+      {/* The dossier card — the product, proven, with a receipt on every line */}
       <motion.div
+        ref={ref}
         variants={reduce ? undefined : revealStagger}
         initial={reduce ? undefined : "hidden"}
         animate={reduce ? undefined : "show"}
-        className="relative rounded-[16px] border border-border-strong bg-paper-2/80 backdrop-blur-sm shadow-[var(--shadow-lift)] overflow-hidden"
+        style={{ rotateX: reduce ? 0 : srx, rotateY: reduce ? 0 : sry, transformStyle: "preserve-3d" }}
+        className="relative rounded-[16px] border border-border-strong bg-paper-2 shadow-[var(--shadow-lift)] overflow-hidden will-change-transform"
       >
         {/* header */}
         <div className="flex items-center gap-2.5 px-5 py-3 border-b border-rule">
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full rounded-full bg-amber/60 animate-ping" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-amber" />
+          <span className="relative grid place-items-center h-2.5 w-2.5">
+            <span className="absolute h-2.5 w-2.5 rounded-full bg-amber/25" />
+            <span className="relative h-1.5 w-1.5 rounded-full bg-amber" />
           </span>
           <span className="t-micro text-ink-faint">RECEIPTS · LIVE</span>
           <span className="ml-auto t-micro rounded-full border border-border px-2.5 py-0.5 text-ink-muted">
@@ -86,9 +122,9 @@ export function LiveProof() {
         </motion.div>
       </motion.div>
 
-      {/* the live object — wax seal pressed into the corner */}
-      <div className="absolute -right-5 -top-9 w-24 sm:w-32 drop-shadow-[var(--shadow-lift)]">
-        <CursorSeal />
+      {/* the live object — wax seal pressed into the corner, reacting to the cursor */}
+      <div className="absolute -right-6 -top-10 w-28 sm:w-36 drop-shadow-[var(--shadow-lift)]">
+        <CursorSeal cards={false} />
       </div>
     </div>
   );

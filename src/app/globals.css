@@ -69,16 +69,47 @@
     background-color: var(--color-paper);
     color: var(--color-ink);
     font-family: var(--font-sans);
-    /* faint paper tooth */
-    background-image: radial-gradient(
-      rgba(26, 25, 22, 0.025) 0.5px,
-      transparent 0.5px
-    );
-    background-size: 4px 4px;
+    /* Layered warm depth — static, premium, GPU-cheap. The "alive" feeling
+       comes from the cursor-reactive seal + scroll, not a perpetual loop. */
+    background-image:
+      radial-gradient(115% 75% at 12% -8%, rgba(224, 163, 0, 0.055), transparent 52%),
+      radial-gradient(95% 65% at 112% 4%, rgba(201, 142, 18, 0.045), transparent 55%);
+    background-attachment: fixed;
+  }
+  /* Fixed film-grain overlay (rasterizes once; replaces the costly 4px tiling). */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    pointer-events: none;
+    opacity: 0.04;
+    mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   }
   ::selection {
     background: var(--amber-hi);
     color: var(--color-ink);
+  }
+  /* Custom scrollbar — on-brand, restrained. */
+  * {
+    scrollbar-color: var(--color-border-strong) transparent;
+    scrollbar-width: thin;
+  }
+  ::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--color-paper-2);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-border-strong);
+    border-radius: 8px;
+    border: 3px solid var(--color-paper-2);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-ink-faint);
   }
   /* Visible, on-brand focus ring */
   :focus-visible {
@@ -97,10 +128,10 @@
 @layer components {
   .t-display {
     font-family: var(--font-display);
-    font-size: clamp(2.75rem, 6vw, 4.5rem);
-    line-height: 1.02;
-    letter-spacing: -0.03em;
-    font-weight: 380;
+    font-size: clamp(2.9rem, 6.2vw, 4.75rem);
+    line-height: 1.01;
+    letter-spacing: -0.035em;
+    font-weight: 400;
   }
   .t-h1 {
     font-family: var(--font-display);

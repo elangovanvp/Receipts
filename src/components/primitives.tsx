@@ -1,8 +1,57 @@
 "use client";
 
-import { motion, useReducedMotion, type HTMLMotionProps } from "framer-motion";
+import { useRef } from "react";
+import {
+  motion,
+  useMotionValue,
+  useSpring,
+  useReducedMotion,
+  type HTMLMotionProps,
+} from "framer-motion";
 import { cn } from "@/lib/utils";
 import { reveal, reducedReveal, revealStagger } from "@/lib/motion";
+
+/** Magnetic wrapper — pulls its child toward the cursor, springs back on leave.
+ *  Used sparingly on primary actions. No-ops under reduced motion. */
+export function Magnetic({
+  children,
+  className,
+  strength = 0.3,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  strength?: number;
+}) {
+  const reduce = useReducedMotion();
+  const ref = useRef<HTMLSpanElement>(null);
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+  const sx = useSpring(x, { stiffness: 220, damping: 15, mass: 0.3 });
+  const sy = useSpring(y, { stiffness: 220, damping: 15, mass: 0.3 });
+
+  const onMove = (e: React.PointerEvent) => {
+    if (reduce || !ref.current) return;
+    const r = ref.current.getBoundingClientRect();
+    x.set((e.clientX - (r.left + r.width / 2)) * strength);
+    y.set((e.clientY - (r.top + r.height / 2)) * strength);
+  };
+  const reset = () => {
+    x.set(0);
+    y.set(0);
+  };
+
+  return (
+    <motion.span
+      ref={ref}
+      onPointerMove={onMove}
+      onPointerLeave={reset}
+      style={{ x: reduce ? 0 : sx, y: reduce ? 0 : sy, display: "inline-flex" }}
+      className={className}
+    >
+      {children}
+    </motion.span>
+  );
+}
 
 /** Mono uppercase eyebrow, optionally prefixed with a case-file exhibit marker. */
 export function Eyebrow({

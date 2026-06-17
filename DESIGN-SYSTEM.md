@@ -53,5 +53,12 @@ Variants exported: `reveal`, `revealStagger`, `stampIn`, `couldntVerify`. All re
 3. **Stamp press-in** — source chips press in like evidence tags.
 Everything else: calm, fast, ink-on-paper. The **Couldn't-verify block is quieter than its surroundings on purpose.**
 
+## 7b. Refinement pass — craft deltas
+- **Texture:** dropped the costly 4px radial-dot tiling for a single fixed `body::after` SVG fractal-noise grain (`opacity .04`, `multiply`) + two static warm radial gradients (`background-attachment: fixed`). Premium tactile feel, rasterizes once.
+- **Scrollbar:** custom on-brand thin scrollbar (`border-strong` thumb on `paper-2` track) via `::-webkit-scrollbar` + `scrollbar-color`.
+- **CursorSeal motion model:** reacts to the pointer, eases to rest and **stops the rAF loop when idle** (no perpetual frame churn → calmer, battery-friendly, render-stable). Pauses offscreen via `IntersectionObserver`. Finite stamp-in entrance on mount.
+- **Live dossier card:** cursor-driven 3D tilt (`rotateX/rotateY` via `useSpring`, springs flat on leave); removed infinite `animate-ping` (static live dot) and `backdrop-blur` for clarity + perf.
+- **Magnetic primary action:** new `Magnetic` primitive (springs child toward cursor, resets on leave; no-op under reduced motion) wraps the hero CTA.
+
 ## 7. Accessibility & performance contract
 GPU transforms only (`transform`/`opacity`) · `prefers-reduced-motion` honored everywhere · full keyboard nav + visible amber focus ring · semantic HTML · WCAG AA contrast · genuinely excellent mobile (hero seal scales/simplifies) · fast LCP (system renders instantly; agent streams after).

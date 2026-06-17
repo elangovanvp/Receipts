@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "./primitives";
+import { Button, Magnetic } from "./primitives";
 import { EXAMPLE_TARGETS } from "@/lib/sample";
 
 export function TeardownInput({
@@ -39,9 +39,11 @@ export function TeardownInput({
             className="w-full h-12 rounded-[10px] border border-border-strong bg-paper pl-9 pr-4 t-body text-ink placeholder:text-ink-faint focus:border-amber transition-colors"
           />
         </div>
-        <Button type="submit" disabled={busy} className="px-6 shrink-0">
-          {busy ? "Gathering evidence…" : "Tear it down"}
-        </Button>
+        <Magnetic className="shrink-0">
+          <Button type="submit" disabled={busy} className="px-6 w-full">
+            {busy ? "Gathering evidence…" : "Tear it down"}
+          </Button>
+        </Magnetic>
       </form>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
