@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Eyebrow } from "./primitives";
 import { TeardownInput } from "./TeardownInput";
 import { LiveProof } from "./LiveProof";
@@ -11,7 +11,7 @@ import type { Teardown } from "@/lib/types";
 
 type Status = "idle" | "running" | "done" | "error";
 
-export function Landing() {
+export function Landing({ initialTarget }: { initialTarget?: string } = {}) {
   const [status, setStatus] = useState<Status>("idle");
   const [target, setTarget] = useState("");
   const [statusLabel, setStatusLabel] = useState("Gathering evidence…");
@@ -52,6 +52,16 @@ export function Landing() {
       },
     });
   };
+
+  // Share permalinks (/t/<target>) auto-run the teardown for cold visitors.
+  const ranRef = useRef(false);
+  useEffect(() => {
+    if (initialTarget && !ranRef.current) {
+      ranRef.current = true;
+      onRun(initialTarget);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTarget]);
 
   return (
     <>

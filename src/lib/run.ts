@@ -1,4 +1,7 @@
 import type { StreamEvent, Teardown } from "./types";
+import { trackAgent } from "./track";
+
+const MODELS = ["llama-3.3-70b-versatile", "openai/gpt-oss-120b"];
 
 /** Consume the /api/teardown SSE stream and dispatch typed callbacks. */
 export async function runTeardown(
@@ -10,6 +13,10 @@ export async function runTeardown(
     signal?: AbortSignal;
   },
 ) {
+  // Novus: a conversation turn begins.
+  trackAgent("prompt", { target, surface: "teardown" });
+  const tools = { web_search: 0, fetch_url: 0 };
+
   let res: Response;
   try {
     res = await fetch("/api/teardown", {
@@ -19,11 +26,13 @@ export async function runTeardown(
       signal: cb.signal,
     });
   } catch {
+    trackAgent("agent_response", { target, status: "error", reason: "unreachable" });
     cb.onError?.("Couldn't reach the agent. Check your connection and retry.");
     return;
   }
 
   if (!res.ok || !res.body) {
+    trackAgent("agent_response", { target, status: "error", reason: "unavailable" });
     cb.onError?.("The agent is unavailable right now. Please try again.");
     return;
   }
@@ -47,9 +56,25 @@ export async function runTeardown(
       } catch {
         continue;
       }
-      if (evt.type === "status") cb.onStatus?.(evt.label);
-      else if (evt.type === "done") cb.onDone?.(evt.teardown);
-      else if (evt.type === "error") cb.onError?.(evt.message);
+      if (evt.type === "status") {
+        if (evt.tool === "web_search" || evt.tool === "fetch_url") tools[evt.tool]++;
+        cb.onStatus?.(evt.label);
+      } else if (evt.type === "done") {
+        const claims = evt.teardown.facets.reduce((n, f) => n + f.claims.length, 0);
+        trackAgent("agent_response", {
+          target,
+          status: "completed",
+          toolsUsed: tools,
+          toolCalls: tools.web_search + tools.fetch_url,
+          claims,
+          unverified: evt.teardown.unverified.length,
+          agentModelsUsed: MODELS,
+        });
+        cb.onDone?.(evt.teardown);
+      } else if (evt.type === "error") {
+        trackAgent("agent_response", { target, status: "unsupported", reason: evt.message });
+        cb.onError?.(evt.message);
+      }
     }
   }
 }

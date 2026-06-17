@@ -28,6 +28,25 @@ export function trackGoalShare(action: string, meta: Record<string, unknown> = {
   }
 }
 
+/**
+ * Novus / Pendo Agent Analytics event. Captures the agent's conversation turns
+ * and tool usage so the agent dashboard fills with real sessions. Safe no-op
+ * until the Pendo SDK + agent are connected (see NOVUS.md).
+ *  - eventType "prompt"          → a user kicked off a teardown
+ *  - eventType "agent_response"  → the agent finished (with tools + models used)
+ */
+export function trackAgent(
+  eventType: "prompt" | "agent_response",
+  props: Record<string, unknown> = {},
+) {
+  if (typeof window === "undefined") return;
+  try {
+    window.pendo?.trackAgent?.(eventType, props);
+  } catch {
+    /* analytics must never break the product */
+  }
+}
+
 /** Render a teardown to clean, source-carrying Markdown for export/paste. */
 export function teardownToMarkdown(t: Teardown): string {
   const lines: string[] = [];

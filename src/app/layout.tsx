@@ -18,7 +18,9 @@ const fraunces = Fraunces({
   axes: ["opsz", "SOFT"],
 });
 
-const SITE = "https://receipts.vercel.app";
+const SITE =
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE),
