@@ -13,6 +13,8 @@ export const maxDuration = 60;
  */
 const LLM_BASE = process.env.LLM_BASE_URL || "https://api.groq.com/openai/v1";
 const LLM_MODEL = process.env.LLM_MODEL || "llama-3.3-70b-versatile";
+// Synthesis (the writing) uses a stronger open model for sharper prose.
+const SYNTH_MODEL = process.env.SYNTH_MODEL || "openai/gpt-oss-120b";
 const LLM_KEY = process.env.LLM_API_KEY || process.env.GROQ_API_KEY || "";
 const JINA_KEY = process.env.JINA_API_KEY || "";
 
@@ -25,20 +27,23 @@ const RESEARCH_SYSTEM = `You are a competitive-intelligence researcher gathering
 You have two tools. To use one, reply with EXACTLY one line and nothing else:
   SEARCH: <query>
   FETCH: <absolute url>
-After I return results, send your next line. When you have read enough real pages — aim for 2-4 FETCHes: the official site plus a pricing and/or changelog page — reply with exactly:
+After I return results, send your next line. Aim for 3-5 FETCHes: the official site, a pricing page, a changelog/release-notes page, AND one credible third-party review or "<product> limitations/complaints" page — that last one is where real weaknesses come from. When you have enough, reply with exactly:
   DONE
 Always start by searching for the product's official website.`;
 
 // Phase 2 — synthesis. Plain JSON output (no tools), which open models do reliably.
-const SYNTH_SYSTEM = `You are Receipts — a ruthless but fair analyst whose entire reputation rests on ONE discipline: NO SOURCE, NO CLAIM.
+const SYNTH_SYSTEM = `You are Receipts — a ruthless but fair competitive analyst. Your reputation rests on ONE rule: NO SOURCE, NO CLAIM.
 
 You are given research notes: the verbatim text of pages that were actually fetched, each prefixed with its SOURCE url. Using ONLY those notes, output a teardown as a single JSON object — no prose, no markdown.
 
-HARD RULES:
+VOICE: Write like a sharp analyst briefing a busy founder. Every claim is ONE concrete, specific, falsifiable sentence with a point of view — name the actual feature, price, number, or move. No marketing fluff, no hedging, no filler words, no restating the product's own tagline as insight.
+
+WEAKNESSES MUST BITE: mine the notes for real soft spots — recurring complaints in reviews, features users keep asking for, pricing friction, a thin or stale changelog, gaps versus competitors. "Could be improved" is worthless; "no native offline mode despite years of user requests" is the job. If the notes contain no honest critical signal, leave weaknesses EMPTY and add an unverified note — never invent or soften a weakness. NEVER treat a fetch error, a 404, an empty page, or a missing URL as a weakness — those are research artifacts, not product flaws.
+
+HARD RULES (absolute):
 - Every claim's source.url MUST be one of the SOURCE urls in the notes, and source.quote MUST be a short verbatim string copied from that page's text.
-- If you cannot back something with the notes, DO NOT assert it. Put it in "unverified" with a one-line reason. Never invent pricing, counts, funding, or dates, and never invent a URL.
-- NEVER write a claim whose text just says information is missing or wasn't found. If a facet has no support in the notes, leave its claims array EMPTY (optionally add an unverified note). Every quote must be a string that literally appears in the notes — never paraphrase or fabricate a quote.
-- One crisp, specific, opinionated sentence per claim. No hype.
+- If you cannot back something with the notes, DO NOT assert it. Put it in "unverified" with a one-line reason. Never invent pricing, counts, funding, dates, or URLs, and never fabricate or paraphrase a quote.
+- NEVER write a claim whose text just says information is missing or wasn't found. A facet with no support gets an EMPTY claims array.
 - confidence "high" only when the company's own page states it or two notes agree; else "medium".
 
 JSON shape:
@@ -82,6 +87,9 @@ async function jinaFetch(url: string): Promise<string> {
   });
   if (!r.ok) return `fetch failed (${r.status})`;
   const text = await r.text();
+  // Empty / soft-404 / JS-blocked pages come back tiny — treat as failed so the
+  // model can't read "the page is basically empty" as evidence of a weakness.
+  if (text.trim().length < 200) return "fetch failed (empty page)";
   return text.slice(0, 3500);
 }
 
@@ -90,11 +98,11 @@ async function jinaFetch(url: string): Promise<string> {
 type ToolCall = { id: string; function: { name: string; arguments: string } };
 type Msg = Record<string, unknown>;
 
-type ChatOpts = { tools?: unknown[]; jsonMode?: boolean };
+type ChatOpts = { tools?: unknown[]; jsonMode?: boolean; model?: string };
 
 async function chat(messages: Msg[], opts: ChatOpts = {}) {
   const body: Record<string, unknown> = {
-    model: LLM_MODEL,
+    model: opts.model ?? LLM_MODEL,
     messages,
     temperature: 0.3,
     max_tokens: 4096,
@@ -130,11 +138,15 @@ async function chat(messages: Msg[], opts: ChatOpts = {}) {
   return data.choices[0].message;
 }
 
-function toTeardown(input: Record<string, unknown>): Teardown {
+const normUrl = (u: string) => u.trim().replace(/\/+$/, "").toLowerCase();
+
+function toTeardown(input: Record<string, unknown>, allowed: Set<string>): Teardown {
   const facets = ((input.facets as Facet[]) ?? []).filter((f) => f && f.key);
   facets.forEach((f) => {
     f.claims = (f.claims ?? [])
-      .filter((c) => c && c.text && c.source?.url)
+      // server-enforced honesty: a claim must carry a verbatim quote AND cite a
+      // page we actually fetched OK — otherwise it isn't a receipt.
+      .filter((c) => c && c.text && c.source?.url && c.source?.quote && allowed.has(normUrl(c.source.url)))
       .map((c, i) => ({ ...c, id: `${f.key}-${i}` }) as Claim);
   });
   return {
@@ -188,6 +200,7 @@ export async function POST(req: Request) {
           { role: "user", content: `Research this product: ${clean}\nReply with your first line.` },
         ];
         const notes: string[] = []; // "SOURCE: <url>\n<content>"
+        const sources: string[] = []; // urls fetched OK — the ONLY citable set
 
         for (let turn = 0; turn < 8 && notes.length < 5; turn++) {
           const msg = await chat(messages);
@@ -206,8 +219,14 @@ export async function POST(req: Request) {
           } else {
             send(controller, { type: "status", tool: "fetch_url", label: `Reading ${arg.replace(/^https?:\/\//, "").slice(0, 48)}…` });
             const body = await jinaFetch(arg);
-            notes.push(`SOURCE: ${arg}\n${body}`); // full text kept only here, not in the loop
-            messages.push({ role: "user", content: `Fetched (${body.length} chars), saved. Your next line (SEARCH/FETCH/DONE):` });
+            if (body.startsWith("fetch failed")) {
+              // a failed fetch must NEVER become citable "evidence"
+              messages.push({ role: "user", content: `That page couldn't be read (${body}). Try a different URL. Your next line (SEARCH/FETCH/DONE):` });
+            } else {
+              notes.push(`SOURCE: ${arg}\n${body}`); // full text kept only here, not in the loop
+              sources.push(arg);
+              messages.push({ role: "user", content: `Fetched (${body.length} chars), saved. Your next line (SEARCH/FETCH/DONE):` });
+            }
           }
         }
 
@@ -215,16 +234,17 @@ export async function POST(req: Request) {
         let teardown: Teardown | null = null;
         if (notes.length) {
           send(controller, { type: "status", tool: "fetch_url", label: "Writing the sourced teardown…" });
+          const allowed = new Set(sources.map(normUrl));
           const corpus = notes.join("\n\n---\n\n").slice(0, 14000);
           const synth = await chat(
             [
               { role: "system", content: SYNTH_SYSTEM },
               { role: "user", content: `Product: ${clean}\n\nRESEARCH NOTES:\n${corpus}` },
             ],
-            { jsonMode: true },
+            { jsonMode: true, model: SYNTH_MODEL },
           );
           try {
-            teardown = toTeardown(JSON.parse(synth.content ?? "{}"));
+            teardown = toTeardown(JSON.parse(synth.content ?? "{}"), allowed);
           } catch {
             teardown = null;
           }
