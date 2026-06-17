@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   motion,
   useMotionValue,
@@ -106,6 +106,32 @@ export function Button({
       {children}
     </motion.button>
   );
+}
+
+/** Count-up — the evidence tally ticks up when the case file lands. Finite
+ *  (~700ms cubic-out), stops cleanly; shows the final value under reduced motion. */
+export function CountUp({ value, className }: { value: number; className?: string }) {
+  const reduce = useReducedMotion();
+  const [n, setN] = useState(reduce ? value : 0);
+  useEffect(() => {
+    if (reduce) {
+      setN(value);
+      return;
+    }
+    let raf = 0;
+    let start = 0;
+    const dur = 700;
+    const tick = (t: number) => {
+      if (!start) start = t;
+      const p = Math.min(1, (t - start) / dur);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setN(Math.round(eased * value));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value, reduce]);
+  return <span className={className}>{n}</span>;
 }
 
 /** Scroll-reveal wrapper. Calm rise+fade; opacity-only under reduced motion. */

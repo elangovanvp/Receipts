@@ -6,7 +6,7 @@ Novus is **mandatory** for the hackathon (project is ineligible without it). It 
 Receipts is a single AI agent that makes many visible **tool calls** (`web_search`, `web_fetch`) per run — exactly the shape Novus's agent dashboard renders best:
 - **Conversations** — each teardown as a prompt → agent-response thread.
 - **Tools used** — `web_search` / `web_fetch` call counts (our agent is tool-heavy → looks genuinely agentic).
-- **Models used** — `claude-opus-4-8`.
+- **Models used** — `llama-3.3-70b-versatile` (research) + `openai/gpt-oss-120b` (synthesis), both free on Groq.
 - **AI quality** — issue / rage / **unsupported-request** rate (our "Couldn't verify" honesty maps here — gaps are a feature, not a failure).
 - **Goal completion** — the `teardown_shared_or_exported` event + a funnel.
 
@@ -21,7 +21,7 @@ Receipts is a single AI agent that makes many visible **tool calls** (`web_searc
    - `/plugin marketplace add pendo-io/claude-pendo-plugin`
    - install `setup-agent-analytics`
    - `/setup-agent-analytics <AGENT_ID>`
-   It injects `window.pendo.trackAgent(...)` on prompt / agent_response / user_reaction. For Receipts, the natural call sites are in `src/lib/run.ts` (on submit → `prompt`; on `done` → `agent_response` with `toolsUsed: ['web_search','web_fetch']`, `agentModelsUsed: ['claude-opus-4-8']`).
+   **Already wired in code** — `src/lib/run.ts` calls `trackAgent("prompt", …)` on submit and `trackAgent("agent_response", { toolsUsed, toolCalls, claims, unverified, agentModelsUsed })` on done; `src/lib/track.ts` is a safe no-op until `window.pendo` exists. So once the Pendo SDK loads and you run `/setup-agent-analytics <AGENT_ID>`, sessions start flowing with zero further code changes from you.
 
 ## Step 3 — the goal event (already in the code)
 `src/lib/track.ts` already fires the conversion the hackathon cares about:

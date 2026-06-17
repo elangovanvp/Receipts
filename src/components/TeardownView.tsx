@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import type { Teardown } from "@/lib/types";
 import { revealStagger } from "@/lib/motion";
-import { Eyebrow, Reveal } from "./primitives";
+import { CountUp, Eyebrow, Reveal } from "./primitives";
 import { ClaimLine } from "./ClaimLine";
 import { CouldntVerify } from "./CouldntVerify";
 import { domainOf } from "@/lib/utils";
@@ -21,7 +21,10 @@ export function TeardownView({
     <article className="w-full">
       {/* Case-file header */}
       <Reveal as="header" className="mb-10">
-        <Eyebrow>Case file · {claimCount} claims · {teardown.unverified.length} unverified</Eyebrow>
+        <Eyebrow>
+          Case file · <CountUp value={claimCount} /> claims ·{" "}
+          <CountUp value={teardown.unverified.length} /> unverified
+        </Eyebrow>
         <h2 className="t-h1 mt-3 text-ink">
           The teardown:{" "}
           <span className="italic text-amber-ink">{teardown.target}</span>
