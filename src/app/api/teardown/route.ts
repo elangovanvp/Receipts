@@ -18,106 +18,38 @@ const JINA_KEY = process.env.JINA_API_KEY || "";
 
 const FACET_KEYS = ["positioning", "icp", "pricing", "recent", "strengths", "weaknesses"] as const;
 
-const SYSTEM = `You are Receipts — a ruthless but fair competitive-intelligence analyst. Your entire reputation rests on ONE discipline:
+// Phase 1 — research via a tiny TEXT protocol (model-agnostic; avoids the flaky
+// native tool-calling that open models like Llama mis-format on Groq).
+const RESEARCH_SYSTEM = `You are a competitive-intelligence researcher gathering evidence about a product: its positioning, who it's for, pricing, recent releases, strengths, and weaknesses.
 
-  NO SOURCE, NO CLAIM.
+You have two tools. To use one, reply with EXACTLY one line and nothing else:
+  SEARCH: <query>
+  FETCH: <absolute url>
+After I return results, send your next line. When you have read enough real pages — aim for 2-4 FETCHes: the official site plus a pricing and/or changelog page — reply with exactly:
+  DONE
+Always start by searching for the product's official website.`;
 
-Given a product (a name or URL), produce a sharp, specific teardown across six facets: positioning, who-it's-for (icp), pricing, what-shipped-recently (recent), where-it's-strong (strengths), where-it's-weak (weaknesses).
+// Phase 2 — synthesis. Plain JSON output (no tools), which open models do reliably.
+const SYNTH_SYSTEM = `You are Receipts — a ruthless but fair analyst whose entire reputation rests on ONE discipline: NO SOURCE, NO CLAIM.
 
-HOW TO WORK:
-1. Call web_search to find the product's real pages (homepage, pricing, changelog/release notes) and third-party reviews.
-2. Call fetch_url on the most relevant URLs to read their ACTUAL content.
-3. Only after reading real pages, finish by calling emit_teardown exactly once.
+You are given research notes: the verbatim text of pages that were actually fetched, each prefixed with its SOURCE url. Using ONLY those notes, output a teardown as a single JSON object — no prose, no markdown.
 
-HARD RULES — non-negotiable:
-- Every factual claim you assert MUST be backed by a page you actually fetched, with the real source URL and a short verbatim quote from that page.
-- If you cannot back a claim with a fetched source, DO NOT assert it. Put it in the "unverified" list with a one-line reason. Never guess pricing, customer counts, funding, or dates.
-- Be specific and opinionated — no hype, no filler. One crisp sentence per claim.
-- confidence = "high" only when two+ independent sources agree or it's on the company's own page; otherwise "medium".
-- Keep total tool calls efficient (aim for ~3-6 searches/fetches), then emit.`;
+HARD RULES:
+- Every claim's source.url MUST be one of the SOURCE urls in the notes, and source.quote MUST be a short verbatim string copied from that page's text.
+- If you cannot back something with the notes, DO NOT assert it. Put it in "unverified" with a one-line reason. Never invent pricing, counts, funding, or dates, and never invent a URL.
+- NEVER write a claim whose text just says information is missing or wasn't found. If a facet has no support in the notes, leave its claims array EMPTY (optionally add an unverified note). Every quote must be a string that literally appears in the notes — never paraphrase or fabricate a quote.
+- One crisp, specific, opinionated sentence per claim. No hype.
+- confidence "high" only when the company's own page states it or two notes agree; else "medium".
 
-const TOOLS = [
-  {
-    type: "function",
-    function: {
-      name: "web_search",
-      description: "Search the web. Returns a list of {title, url, snippet}.",
-      parameters: {
-        type: "object",
-        properties: { query: { type: "string", description: "Search query." } },
-        required: ["query"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "fetch_url",
-      description: "Fetch and read the readable text of a single web page.",
-      parameters: {
-        type: "object",
-        properties: { url: { type: "string", description: "Absolute URL to read." } },
-        required: ["url"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "emit_teardown",
-      description: "Emit the final structured teardown. Call exactly once, last.",
-      parameters: {
-        type: "object",
-        properties: {
-          target: { type: "string" },
-          canonicalUrl: { type: "string" },
-          tagline: { type: "string", description: "One sharp sentence read of the product." },
-          facets: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                key: { type: "string", enum: [...FACET_KEYS] },
-                label: { type: "string" },
-                exhibit: { type: "string", description: "A..F" },
-                claims: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      text: { type: "string" },
-                      confidence: { type: "string", enum: ["high", "medium"] },
-                      source: {
-                        type: "object",
-                        properties: {
-                          title: { type: "string" },
-                          url: { type: "string" },
-                          quote: { type: "string", description: "Verbatim quote from the fetched page." },
-                        },
-                        required: ["title", "url", "quote"],
-                      },
-                    },
-                    required: ["text", "confidence", "source"],
-                  },
-                },
-              },
-              required: ["key", "label", "exhibit", "claims"],
-            },
-          },
-          unverified: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: { text: { type: "string" }, reason: { type: "string" } },
-              required: ["text", "reason"],
-            },
-          },
-        },
-        required: ["target", "canonicalUrl", "tagline", "facets", "unverified"],
-      },
-    },
-  },
-];
+JSON shape:
+{
+  "target": string, "canonicalUrl": string, "tagline": string (one sharp sentence),
+  "facets": [ { "key": one of ${JSON.stringify(FACET_KEYS)}, "label": string, "exhibit": "A".."F",
+    "claims": [ { "text": string, "confidence": "high"|"medium",
+      "source": { "title": string, "url": string, "quote": string } } ] } ],
+  "unverified": [ { "text": string, "reason": string } ]
+}
+Include all six facets in that order (exhibits A-F). A facet with no support gets an empty claims array.`;
 
 // ---- Free tools (Jina) -----------------------------------------------------
 
@@ -133,10 +65,10 @@ async function jinaSearch(query: string): Promise<string> {
   });
   if (!r.ok) return `search failed (${r.status})`;
   const j = (await r.json()) as { data?: Array<{ title?: string; url?: string; description?: string }> };
-  const hits = (j.data ?? []).slice(0, 6).map((d) => ({
+  const hits = (j.data ?? []).slice(0, 4).map((d) => ({
     title: d.title ?? "",
     url: d.url ?? "",
-    snippet: (d.description ?? "").slice(0, 200),
+    snippet: (d.description ?? "").slice(0, 120),
   }));
   return JSON.stringify(hits);
 }
@@ -150,7 +82,7 @@ async function jinaFetch(url: string): Promise<string> {
   });
   if (!r.ok) return `fetch failed (${r.status})`;
   const text = await r.text();
-  return text.slice(0, 6000);
+  return text.slice(0, 3500);
 }
 
 // ---- LLM (OpenAI-compatible) ----------------------------------------------
@@ -158,23 +90,39 @@ async function jinaFetch(url: string): Promise<string> {
 type ToolCall = { id: string; function: { name: string; arguments: string } };
 type Msg = Record<string, unknown>;
 
-async function chat(messages: Msg[]) {
-  const r = await fetch(`${LLM_BASE}/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${LLM_KEY}` },
-    body: JSON.stringify({
-      model: LLM_MODEL,
-      messages,
-      tools: TOOLS,
-      tool_choice: "auto",
-      temperature: 0.3,
-      max_tokens: 4096,
-    }),
-    signal: AbortSignal.timeout(55000),
-  });
+type ChatOpts = { tools?: unknown[]; jsonMode?: boolean };
+
+async function chat(messages: Msg[], opts: ChatOpts = {}) {
+  const body: Record<string, unknown> = {
+    model: LLM_MODEL,
+    messages,
+    temperature: 0.3,
+    max_tokens: 4096,
+  };
+  if (opts.tools) {
+    body.tools = opts.tools;
+    body.tool_choice = "auto";
+  }
+  if (opts.jsonMode) body.response_format = { type: "json_object" };
+
+  const call = () =>
+    fetch(`${LLM_BASE}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${LLM_KEY}` },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(55000),
+    });
+
+  let r = await call();
+  if (r.status === 429) {
+    // free-tier TPM window — wait the suggested time (capped) and retry once
+    const ra = Number(r.headers.get("retry-after")) || 8;
+    await new Promise((res) => setTimeout(res, Math.min(ra, 12) * 1000));
+    r = await call();
+  }
   if (!r.ok) {
-    const body = await r.text().catch(() => "");
-    throw new Error(`LLM ${r.status}: ${body.slice(0, 200)}`);
+    const errText = await r.text().catch(() => "");
+    throw new Error(`LLM ${r.status}: ${errText.slice(0, 200)}`);
   }
   const data = (await r.json()) as {
     choices: Array<{ message: { content?: string; tool_calls?: ToolCall[] } }>;
@@ -234,67 +182,58 @@ export async function POST(req: Request) {
           return;
         }
 
+        // ---- Phase 1: research via the text protocol; stash fetched pages in `notes` ----
         const messages: Msg[] = [
-          { role: "system", content: SYSTEM },
-          { role: "user", content: `Tear down this product: ${clean}` },
+          { role: "system", content: RESEARCH_SYSTEM },
+          { role: "user", content: `Research this product: ${clean}\nReply with your first line.` },
         ];
+        const notes: string[] = []; // "SOURCE: <url>\n<content>"
 
-        let teardown: Teardown | null = null;
-        let nudges = 0;
-
-        for (let turn = 0; turn < 10 && !teardown; turn++) {
+        for (let turn = 0; turn < 8 && notes.length < 5; turn++) {
           const msg = await chat(messages);
-          const calls = msg.tool_calls ?? [];
+          const text = (msg.content ?? "").trim();
+          messages.push({ role: "assistant", content: text });
 
-          if (calls.length === 0) {
-            if (nudges < 2) {
-              nudges++;
-              messages.push({ role: "assistant", content: msg.content ?? "" });
-              messages.push({
-                role: "user",
-                content:
-                  "Call emit_teardown now with everything you verified. Route anything you couldn't source into the unverified list.",
-              });
-              continue;
-            }
-            break;
+          const m = text.match(/\b(SEARCH|FETCH|DONE)\b\s*:?[ \t]*([^\n]*)/i);
+          const verb = (m?.[1] ?? "DONE").toUpperCase();
+          const arg = (m?.[2] ?? "").trim().replace(/^["'<]+|["'>.,]+$/g, "");
+          if (verb === "DONE" || !arg) break;
+
+          if (verb === "SEARCH") {
+            send(controller, { type: "status", tool: "web_search", label: `Searching: ${arg.slice(0, 60)}` });
+            const out = await jinaSearch(arg);
+            messages.push({ role: "user", content: `RESULTS:\n${out}\nYour next line (SEARCH/FETCH/DONE):` });
+          } else {
+            send(controller, { type: "status", tool: "fetch_url", label: `Reading ${arg.replace(/^https?:\/\//, "").slice(0, 48)}…` });
+            const body = await jinaFetch(arg);
+            notes.push(`SOURCE: ${arg}\n${body}`); // full text kept only here, not in the loop
+            messages.push({ role: "user", content: `Fetched (${body.length} chars), saved. Your next line (SEARCH/FETCH/DONE):` });
           }
+        }
 
-          // record the assistant turn (with its tool calls) before results
-          messages.push({ role: "assistant", content: msg.content ?? "", tool_calls: calls });
-
-          for (const call of calls) {
-            const name = call.function.name;
-            let args: Record<string, unknown> = {};
-            try {
-              args = JSON.parse(call.function.arguments || "{}");
-            } catch {
-              /* leave empty */
-            }
-
-            if (name === "emit_teardown") {
-              teardown = toTeardown(args);
-              messages.push({ role: "tool", tool_call_id: call.id, content: "ok" });
-              break;
-            } else if (name === "web_search") {
-              send(controller, { type: "status", tool: "web_search", label: `Searching: ${String(args.query ?? "").slice(0, 60)}` });
-              const out = await jinaSearch(String(args.query ?? clean));
-              messages.push({ role: "tool", tool_call_id: call.id, content: out });
-            } else if (name === "fetch_url") {
-              const url = String(args.url ?? "");
-              send(controller, { type: "status", tool: "fetch_url", label: `Reading ${url.replace(/^https?:\/\//, "").slice(0, 48)}…` });
-              const out = await jinaFetch(url);
-              messages.push({ role: "tool", tool_call_id: call.id, content: out });
-            } else {
-              messages.push({ role: "tool", tool_call_id: call.id, content: "unknown tool" });
-            }
+        // ---- Phase 2: synthesize a sourced teardown as plain JSON ----
+        let teardown: Teardown | null = null;
+        if (notes.length) {
+          send(controller, { type: "status", tool: "fetch_url", label: "Writing the sourced teardown…" });
+          const corpus = notes.join("\n\n---\n\n").slice(0, 14000);
+          const synth = await chat(
+            [
+              { role: "system", content: SYNTH_SYSTEM },
+              { role: "user", content: `Product: ${clean}\n\nRESEARCH NOTES:\n${corpus}` },
+            ],
+            { jsonMode: true },
+          );
+          try {
+            teardown = toTeardown(JSON.parse(synth.content ?? "{}"));
+          } catch {
+            teardown = null;
           }
         }
 
         if (!teardown) {
           send(controller, {
             type: "error",
-            message: `Couldn't assemble a sourced teardown for “${clean}”. Try a more specific product name or URL.`,
+            message: `Couldn't gather enough public material to tear down “${clean}” fairly. Try a more specific product name or its URL.`,
           });
         } else if (!teardown.facets.some((f) => f.claims.length)) {
           send(controller, {
