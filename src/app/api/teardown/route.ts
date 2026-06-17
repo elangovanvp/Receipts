@@ -45,6 +45,8 @@ HARD RULES (absolute):
 - If you cannot back something with the notes, DO NOT assert it. Put it in "unverified" with a one-line reason. Never invent pricing, counts, funding, dates, or URLs, and never fabricate or paraphrase a quote.
 - NEVER write a claim whose text just says information is missing or wasn't found. A facet with no support gets an EMPTY claims array.
 - confidence "high" only when the company's own page states it or two notes agree; else "medium".
+- A quote must read as human prose — NEVER a navigation menu, link list, or bullet fragments like "* Design * Engineering * Product". If the only supporting text is a menu, skip the claim.
+- For positioning, do NOT echo the tagline back as the claim. State the distinct stance it stakes out or who it's implicitly fighting (e.g. not "calls itself the collaborative design tool" but "bets on real-time multiplayer as the wedge against Sketch's single-player files").
 
 JSON shape:
 {
@@ -124,8 +126,8 @@ async function chat(messages: Msg[], opts: ChatOpts = {}) {
   let r = await call();
   if (r.status === 429) {
     // free-tier TPM window — wait the suggested time (capped) and retry once
-    const ra = Number(r.headers.get("retry-after")) || 8;
-    await new Promise((res) => setTimeout(res, Math.min(ra, 12) * 1000));
+    const ra = Number(r.headers.get("retry-after")) || 10;
+    await new Promise((res) => setTimeout(res, Math.min(ra, 20) * 1000));
     r = await call();
   }
   if (!r.ok) {
@@ -235,7 +237,7 @@ export async function POST(req: Request) {
         if (notes.length) {
           send(controller, { type: "status", tool: "fetch_url", label: "Writing the sourced teardown…" });
           const allowed = new Set(sources.map(normUrl));
-          const corpus = notes.join("\n\n---\n\n").slice(0, 14000);
+          const corpus = notes.join("\n\n---\n\n").slice(0, 9000);
           const synth = await chat(
             [
               { role: "system", content: SYNTH_SYSTEM },
