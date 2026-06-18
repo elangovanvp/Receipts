@@ -8,6 +8,8 @@ export async function runTeardown(
   target: string,
   cb: {
     onStatus?: (label: string) => void;
+    onToolCall?: (tool: "web_search" | "fetch_url", label: string) => void;
+    onClaim?: (facet: import("./types").Facet, claim: import("./types").Claim) => void;
     onDone?: (t: Teardown) => void;
     onError?: (message: string) => void;
     signal?: AbortSignal;
@@ -58,7 +60,10 @@ export async function runTeardown(
       }
       if (evt.type === "status") {
         if (evt.tool === "web_search" || evt.tool === "fetch_url") tools[evt.tool]++;
+        cb.onToolCall?.(evt.tool, evt.label);
         cb.onStatus?.(evt.label);
+      } else if (evt.type === "claim") {
+        cb.onClaim?.({ key: evt.facet.key, label: evt.facet.label, exhibit: evt.facet.exhibit, claims: [] }, evt.claim);
       } else if (evt.type === "done") {
         const claims = evt.teardown.facets.reduce((n, f) => n + f.claims.length, 0);
         trackAgent("agent_response", {
