@@ -13,19 +13,20 @@ INK = (26, 25, 22)
 
 def seal(size, cx, cy, R, base_img):
     """Draw a wax-seal mark (clay circle + sheen + checkmark) onto base_img."""
-    S = base_img.size[0]
+    W, H = base_img.size
+    S = W  # layer width reference for blur radius scaling
     d = ImageDraw.Draw(base_img)
     # base circle + embossed edge
     d.ellipse([cx - R, cy - R, cx + R, cy + R], fill=CLAY + (255,),
               outline=CLAY_EDGE + (255,), width=max(2, int(R * 0.05)))
     # soft top-left sheen, clipped to the seal
-    hl = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    hl = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     hd = ImageDraw.Draw(hl)
     hr = int(R * 0.72)
     hcx, hcy = int(cx - R * 0.30), int(cy - R * 0.32)
     hd.ellipse([hcx - hr, hcy - hr, hcx + hr, hcy + hr], fill=CLAY_HI + (190,))
     hl = hl.filter(ImageFilter.GaussianBlur(int(R * 0.28)))
-    mask = Image.new("L", (S, S), 0)
+    mask = Image.new("L", (W, H), 0)
     ImageDraw.Draw(mask).ellipse([cx - R, cy - R, cx + R, cy + R], fill=255)
     hl.putalpha(ImageChops.multiply(hl.split()[3], mask))
     base_img.alpha_composite(hl)
