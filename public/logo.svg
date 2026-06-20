@@ -1,0 +1,18 @@
+<svg width="248" height="60" viewBox="0 0 248 60" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Receipts">
+  <defs>
+    <radialGradient id="wax" cx="38%" cy="30%" r="78%">
+      <stop offset="0%" stop-color="#E07A5C"/>
+      <stop offset="52%" stop-color="#C25A38"/>
+      <stop offset="100%" stop-color="#A8472A"/>
+    </radialGradient>
+  </defs>
+  <!-- Wax-seal mark -->
+  <g transform="translate(10,10)">
+    <circle cx="20" cy="20" r="20" fill="url(#wax)"/>
+    <circle cx="20" cy="20" r="20" fill="none" stroke="#7A3020" stroke-opacity="0.45" stroke-width="1.4"/>
+    <circle cx="20" cy="20" r="14.6" fill="none" stroke="#FBE0D2" stroke-opacity="0.45" stroke-width="1" stroke-dasharray="0.8 3"/>
+    <path d="M12.4 20.6l5.6 5.6 10.8-11.6" fill="none" stroke="#FFEEE1" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <!-- Wordmark -->
+  <text x="64" y="40" font-family="Fraunces, Georgia, 'Times New Roman', serif" font-size="31" font-weight="600" fill="#1A1916" letter-spacing="-0.6">Receipts</text>
+</svg>

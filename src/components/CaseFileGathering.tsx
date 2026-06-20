@@ -174,7 +174,7 @@ export function CaseFileGathering({ target, label, toolLog }: Props) {
         {/* Phase indicator */}
         <div
           style={{
-            padding: "14px 20px 16px",
+            padding: "14px 22px 28px",
             borderTop: "1px solid var(--color-hairline)",
           }}
         >
@@ -195,6 +195,7 @@ export function CaseFileGathering({ target, label, toolLog }: Props) {
                   label={PHASE_LABEL[p]}
                   active={active}
                   done={done}
+                  first={i === 0}
                   last={i === PHASE_ORDER.length - 1}
                   reduce={!!reduce}
                 />
@@ -287,15 +288,25 @@ function PhaseStep({
   label,
   active,
   done,
+  first,
   last,
   reduce,
 }: {
   label: string;
   active: boolean;
   done: boolean;
+  first: boolean;
   last: boolean;
   reduce: boolean;
 }) {
+  // Edge-aware label alignment so the first/last labels never overflow the
+  // card (which clips via overflow:hidden). First hugs left, last hugs right,
+  // middle stays centered under its dot.
+  const labelPos: React.CSSProperties = first
+    ? { left: 0, transform: "none", textAlign: "left" }
+    : last
+      ? { right: 0, left: "auto", transform: "none", textAlign: "right" }
+      : { left: "50%", transform: "translateX(-50%)" };
   return (
     <div
       style={{
@@ -331,8 +342,6 @@ function PhaseStep({
           style={{
             position: "absolute",
             top: "14px",
-            left: "50%",
-            transform: "translateX(-50%)",
             fontFamily: "var(--font-mono)",
             fontSize: "8.5px",
             letterSpacing: "0.1em",
@@ -342,6 +351,7 @@ function PhaseStep({
                 ? "var(--color-clay)"
                 : "var(--color-ink-faint)",
             whiteSpace: "nowrap",
+            ...labelPos,
           }}
         >
           {label}

@@ -1,6 +1,14 @@
 <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-  <rect width="32" height="32" rx="7" fill="#1A1916"/>
-  <circle cx="16" cy="16" r="10.5" fill="none" stroke="#E0A300" stroke-width="1.4" stroke-dasharray="1.6 2.4"/>
-  <circle cx="16" cy="16" r="7.4" fill="#E0A300"/>
-  <path d="M12 16.4l2.6 2.6 5.2-5.6" fill="none" stroke="#1A1916" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <defs>
+    <radialGradient id="wax" cx="38%" cy="30%" r="78%">
+      <stop offset="0%" stop-color="#E07A5C"/>
+      <stop offset="52%" stop-color="#C25A38"/>
+      <stop offset="100%" stop-color="#A8472A"/>
+    </radialGradient>
+  </defs>
+  <rect width="32" height="32" rx="7.5" fill="#1A1916"/>
+  <circle cx="16" cy="16" r="10" fill="url(#wax)"/>
+  <circle cx="16" cy="16" r="10" fill="none" stroke="#7A3020" stroke-opacity="0.45" stroke-width="1"/>
+  <circle cx="16" cy="16" r="7.5" fill="none" stroke="#FBE0D2" stroke-opacity="0.45" stroke-width="0.8" stroke-dasharray="0.6 2.4"/>
+  <path d="M11.4 16.4l3.1 3.1 6.1-6.7" fill="none" stroke="#FFEEE1" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
